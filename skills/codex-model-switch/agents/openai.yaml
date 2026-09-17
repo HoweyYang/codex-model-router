@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Model Switch"
+  short_description: "Switch Codex models/providers and build multi-model teams"
+  default_prompt: "Switch my Codex default model, or set up several models to work together."

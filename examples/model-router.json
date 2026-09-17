@@ -1,0 +1,17 @@
+{
+  "listen": "127.0.0.1:8765",
+  "routes": [
+    {
+      "name": "chatgpt",
+      "match": ["gpt-", "codex-"],
+      "upstream": "https://chatgpt.com/backend-api/codex/responses",
+      "auth": "passthrough"
+    },
+    {
+      "name": "deepseek",
+      "match": ["deepseek"],
+      "upstream": "https://api.deepseek.com/v1/responses",
+      "auth": { "provider": "deepseek" }
+    }
+  ]
+}
