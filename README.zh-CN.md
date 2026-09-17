@@ -164,6 +164,11 @@ python skills/codex-model-switch/scripts/msw.py switch router
 装技能：把 `skills/codex-model-switch` 复制或软链到 `~/.codex/skills/` 下。
 
 ## 已知限制
+- **换供应商不会影响已有的对话。** 对话在创建时就绑定了供应商，选择器只改模型名。
+  在旧对话里切到别家的模型，请求仍然发给那个对话原本的供应商，所以会看到
+  `The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed gpt-5.6-terra`。
+  换供应商之后请**新开一个对话**。
+
 
 - **它是个常驻进程。** 路由器挂了，Codex 就走不通。把默认改回直连供应商即可恢复。
 - **GPT 那条走的是 Codex 的私有接口**（`chatgpt.com/backend-api/codex`）。Codex 升级

@@ -179,6 +179,15 @@ Install it by copying or linking `skills/codex-model-switch` into
 `~/.codex/skills/`.
 
 ## Caveats
+- **Changing the provider does not change existing chats.** A chat binds its
+  provider when it is created, and the model picker only changes the model name.
+  Pick a model from another backend inside an old chat and the request still goes
+  to that chat's original provider, which is why you can see
+  `The supported API model names are deepseek-flash, deepseek-v4-pro, but you
+  passed gpt-5.6-terra` after choosing GPT in a chat created while DeepSeek was
+  the default. **Start a new chat** after changing the provider or pointing
+  Codex at the router.
+
 
 - **It is a resident process.** If the router is down, Codex cannot reach that
   provider. Switching the default back to a direct provider restores service.
