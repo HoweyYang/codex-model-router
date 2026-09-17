@@ -175,6 +175,33 @@ python skills/codex-model-switch/scripts/msw.py switch router
   有可能改掉它，这是整个方案唯一长期脆弱的地方；API key 路线不受影响。
 - 模型目录只是一份清单，**不校验模型是否真实存在**。写错了要等发请求才报错。
 
+## 排错
+
+**选了别家的模型，却报原来那家供应商的错。** 对话在创建时就绑定了供应商，选择器只改模型名。
+新开一个对话即可。
+
+想确认某个对话绑的是哪家：读 `~/.codex/sessions/` 下它的会话文件第一行，看 `model_provider` 字段。
+路由器日志（`~/.codex/model-router.log`）能告诉你请求到底有没有走到路由器：如果你选的模型从没在
+日志里出现，说明请求直接发给了别的供应商。
+
+**改完配置，选择器里还是旧模型。** 桌面 App 只在启动时读配置，重启一次。
+
+**请求卡住或超时。** 先确认路由器活着：
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+```
+
+正常会返回 `{"status": "ok", "routes": [...]}`。如果它正常，而模型又是境外托管的 OpenAI 接口，
+那就是网络问题：`codex doctor` 会打印可达性检查，另外 `features.respect_system_proxy = true`
+可以让 Codex 走系统代理。
+
+**报 `Model metadata for <slug> not found`。** 这个 slug 不在 `model_catalog_json` 指向的目录里。
+重新跑一次 `tools/merge-catalogs.py`，再重启 App。
+
+**命令被拒绝，提示 `apply deny-read ACLs`。** 这是 Windows 上 Codex 沙箱自身的安装故障，和本项目无关。
+`codex doctor` 里对应的是 `elevated Windows sandbox provisioning recorded a structured failure`。
+
 ## License
 
 MIT

@@ -197,6 +197,39 @@ Install it by copying or linking `skills/codex-model-switch` into
 - The catalog is only a list. A wrong slug shows up in the picker and fails at
   request time.
 
+## Troubleshooting
+
+**Picking a model from another backend throws the old provider's error.** A chat
+binds its provider when it is created, and the model picker only changes the
+model name. Start a new chat.
+
+To confirm which provider a chat is bound to, read the first line of its session
+file under `~/.codex/sessions/` and look at `model_provider`. The router log
+(`~/.codex/model-router.log`) shows whether a request ever reached the router: if
+the model you picked never appears there, it went straight to another provider.
+
+**The picker still lists the old models after a config change.** The desktop app
+reads config at startup. Restart it.
+
+**Requests hang or time out.** Check the router is alive:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+```
+
+It should return `{"status": "ok", "routes": [...]}`. If it does and the model is
+a hosted OpenAI one, the problem is your network: `codex doctor` prints the
+reachability lines, and `features.respect_system_proxy = true` lets Codex use a
+system proxy.
+
+**`Model metadata for <slug> not found`.** That slug is missing from the catalog
+`model_catalog_json` points at. Re-run `tools/merge-catalogs.py`, then restart the
+app.
+
+**Commands are rejected with `apply deny-read ACLs`.** That is a Codex sandbox
+provisioning failure on Windows, unrelated to this router. `codex doctor` reports
+it as `elevated Windows sandbox provisioning recorded a structured failure`.
+
 ## License
 
 MIT
