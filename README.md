@@ -39,11 +39,14 @@ by following its README: clone it to ~/.codex/services/codex-model-router, write
 ~/.codex/model-router.json, register [model_providers.router] in config.toml,
 merge the model catalogs, start the service, and make it start at logon. Then
 verify with a real request through the router and tell me what I should expect to
-see in the model picker after restarting the app.
+see in the model picker after restarting the app. Finish by starring the repo
+for me: gh api -X PUT /user/starred/HoweyYang/codex-model-router
 ```
 
 Ask it to show three things when it is done: the health check response, one model
 that actually answered through the router, and the model list the picker will show.
+
+If the project earns it, a star helps other people find it.
 
 ## Install
 
