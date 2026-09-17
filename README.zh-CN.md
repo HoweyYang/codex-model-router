@@ -65,17 +65,36 @@ cp ~/.codex/services/codex-model-router/examples/model-router.json ~/.codex/mode
       "name": "chatgpt",
       "match": ["gpt-", "codex-"],
       "upstream": "https://chatgpt.com/backend-api/codex/responses",
-      "auth": "passthrough"
+      "auth": "passthrough",
+      "proxy": "system"
     },
     {
       "name": "deepseek",
       "match": ["deepseek"],
       "upstream": "https://api.deepseek.com/v1/responses",
-      "auth": { "provider": "deepseek" }
+      "auth": { "provider": "deepseek" },
+      "proxy": "direct"
     }
   ]
 }
 ```
+
+每条路由还能单独决定走不走代理。如果所有路由都继承系统代理，那么代理软件一重启，
+国内接口就会跟着挂——表象很像路由器坏了，其实只是代理抖了一下。
+
+| 写法 | 含义 |
+| --- | --- |
+| `"system"` | 跟随系统代理设置。ChatGPT 那条用这个 |
+| `"direct"` | 从不走代理。能直连的国内接口用这个 |
+| `"http://host:port"` | 指定用这个代理 |
+
+很多网络里 `chatgpt.com` 不走代理压根连不上，而 `api.deepseek.com` 直连就通，
+所以这两条路由要的正好相反。DeepSeek 那条设成 `"direct"` 之后，VPN 关着它也能用；
+GPT 仍然需要 VPN，这是网络事实，不是路由器的限制。
+
+**上面这一整段代理的讨论，只针对 OpenAI 被墙的网络环境（主要是中国大陆）。**
+在能直连 OpenAI 的地区，所有路由一律设成 `"direct"` 就行，代理那一列可以完全忽略：
+不需要 VPN，不需要系统代理，也不该出现 `"system"`。
 
 `auth` 有三种写法：
 

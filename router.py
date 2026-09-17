@@ -14,6 +14,13 @@ Two auth styles:
   provider     look the key up from Codex's own config.toml provider entry or
                from an environment variable.
 
+Each route also picks its own proxy behaviour, because a hosted endpoint and a
+domestic one rarely want the same thing:
+
+  "proxy": "system"  (default) follow the OS proxy settings
+  "proxy": "direct"  never use a proxy
+  "proxy": "http://host:port"  use that proxy
+
 Standard library only. Configure with ~/.codex/model-router.json.
 """
 
@@ -130,6 +137,21 @@ def pick_route(routes: list, model: str) -> dict | None:
     return None
 
 
+def build_opener(route: dict):
+    """Give each route its own proxy policy.
+
+    Letting every route inherit the system proxy means a domestic API dies
+    whenever the proxy restarts, which looks like the router being broken.
+    """
+    mode = route.get("proxy", "system")
+    if mode == "direct":
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    if isinstance(mode, str) and mode.startswith("http"):
+        handlers = urllib.request.ProxyHandler({"http": mode, "https": mode})
+        return urllib.request.build_opener(handlers)
+    return urllib.request.build_opener()
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     routes: list = []
@@ -181,7 +203,7 @@ class Handler(BaseHTTPRequestHandler):
             route["upstream"], data=body, headers=headers, method="POST"
         )
         try:
-            response = urllib.request.urlopen(request, timeout=route.get("timeout", 600))
+            response = build_opener(route).open(request, timeout=route.get("timeout", 600))
         except urllib.error.HTTPError as error:
             # Pass upstream errors straight through, including 401, so Codex's
             # own token refresh keeps working.

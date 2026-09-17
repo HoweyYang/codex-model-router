@@ -72,17 +72,40 @@ cp ~/.codex/services/codex-model-router/examples/model-router.json ~/.codex/mode
       "name": "chatgpt",
       "match": ["gpt-", "codex-"],
       "upstream": "https://chatgpt.com/backend-api/codex/responses",
-      "auth": "passthrough"
+      "auth": "passthrough",
+      "proxy": "system"
     },
     {
       "name": "deepseek",
       "match": ["deepseek"],
       "upstream": "https://api.deepseek.com/v1/responses",
-      "auth": { "provider": "deepseek" }
+      "auth": { "provider": "deepseek" },
+      "proxy": "direct"
     }
   ]
 }
 ```
+
+Each route also decides its own proxy behaviour. Letting every route inherit the
+system proxy means a regional API dies whenever the proxy restarts — which looks
+like the router being broken while it is only the proxy blipping.
+
+| Value | Meaning |
+| --- | --- |
+| `"system"` | Follow the OS proxy settings. Use this for the ChatGPT route |
+| `"direct"` | Never use a proxy. Use this for directly reachable regional APIs |
+| `"http://host:port"` | Use that proxy explicitly |
+
+On many networks `chatgpt.com` is unreachable without a proxy while
+`api.deepseek.com` is reachable directly, so those two routes want opposite
+settings. With `"direct"` on the DeepSeek route, DeepSeek keeps working while
+the VPN is off; GPT still needs the VPN, because that is a network fact, not a
+router limitation.
+
+**This whole proxy discussion only applies to networks where OpenAI is blocked —
+mainland China being the main one.** Where OpenAI is directly reachable, set
+every route to `"direct"` and ignore the proxy column entirely: no VPN, no
+system proxy, no `"system"` value anywhere.
 
 Three ways to express `auth`:
 

@@ -5,13 +5,15 @@
       "name": "chatgpt",
       "match": ["gpt-", "codex-"],
       "upstream": "https://chatgpt.com/backend-api/codex/responses",
-      "auth": "passthrough"
+      "auth": "passthrough",
+      "proxy": "system"
     },
     {
       "name": "deepseek",
       "match": ["deepseek"],
       "upstream": "https://api.deepseek.com/v1/responses",
-      "auth": { "provider": "deepseek" }
+      "auth": { "provider": "deepseek" },
+      "proxy": "direct"
     }
   ]
 }
