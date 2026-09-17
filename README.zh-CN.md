@@ -25,6 +25,19 @@ GPT 那条之所以不用配 key：Codex 会把 ChatGPT 登录凭据发给自定
 
 只用 Python 标准库，需要 Python 3.8+。
 
+## 让 Codex 自己装
+
+最省事的用法：把仓库地址丢给 Codex，让它读 README 并照着做。
+
+```text
+读一下 https://github.com/HoweyYang/codex-model-router ，按它的说明在我这台机器上装好：
+克隆到 ~/.codex/services/codex-model-router、写 ~/.codex/model-router.json、
+在 config.toml 注册 [model_providers.router]、合并模型目录、启动服务并设置开机自启。
+装完用真实请求走一遍路由器验证，再告诉我重启 App 后右下角应该看到什么。
+```
+
+收尾让它给你三样东西：健康检查的返回、一个真正跑通的模型、以及选择器里会出现的模型清单。
+
 ## 安装
 
 **1. 放文件**
