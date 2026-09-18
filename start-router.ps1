@@ -24,4 +24,21 @@ Start-Process -FilePath $pythonw `
     -ArgumentList (Join-Path $root 'router.py') `
     -WindowStyle Hidden
 
-Write-Host "codex-model-router starting on port $port"
+# pythonw has no console, so a busy port or bad config kills the process with
+# no visible error. Wait for the socket to actually come up; if it does not,
+# point the user at the log file instead of pretending we started fine.
+$ok = $false
+for ($i = 0; $i -lt 10; $i++) {
+    Start-Sleep -Milliseconds 500
+    if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
+        $ok = $true
+        break
+    }
+}
+
+if ($ok) {
+    Write-Host "codex-model-router listening on port $port"
+} else {
+    Write-Warning "launched but nothing is listening on $port. Check ~/.codex/model-router.log for the startup error."
+    exit 1
+}

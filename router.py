@@ -252,11 +252,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+class Server(ThreadingHTTPServer):
+    # Let a restart within seconds of the previous shutdown rebind cleanly,
+    # instead of refusing with "address already in use" while TIME_WAIT drains.
+    allow_reuse_address = True
+
+
 def main() -> int:
     config = load_config()
     Handler.routes = config["routes"]
     host, _, port = config.get("listen", "127.0.0.1:8765").rpartition(":")
-    server = ThreadingHTTPServer((host or "127.0.0.1", int(port)), Handler)
+    host = host or "127.0.0.1"
+    try:
+        server = Server((host, int(port)), Handler)
+    except OSError as error:
+        # Started with pythonw there is no console, so without this line a busy
+        # port makes the router exit silently and Codex just sees "connection
+        # failed" with no clue why.
+        log(f"FATAL could not bind {host}:{port}: {error}")
+        return 1
     log(f"router listening on http://{host}:{port}")
     for route in Handler.routes:
         log(f"  {route['name']:<12} {'/'.join(route['match'])} -> {route['upstream']}")
@@ -264,6 +278,9 @@ def main() -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    except Exception as error:  # pragma: no cover - defensive, keep a record
+        log(f"FATAL serve loop crashed: {error}")
+        return 1
     return 0
 
 

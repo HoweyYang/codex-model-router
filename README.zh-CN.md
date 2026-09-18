@@ -136,17 +136,23 @@ python ~/.codex/services/codex-model-router/tools/merge-catalogs.py \
 .\stop-router.ps1      # 按端口停掉
 ```
 
-开机自启用计划任务最稳——从 Startup 快捷方式启动的进程可能随启动它的 shell 一起退出：
+然后**跑一次**下面这个，把路由器和 Codex 的生命周期绑在一起：它会把
+`mcp-autostart.py` 注册成一个不提供任何工具的 MCP server。Codex 启动时会拉起
+自己配置的所有 MCP server，于是路由器跟着 Codex 一起起来；Codex 一关，钩子进程
+跟着退出，系统里不留东西。不用开机自启，不用 Startup 文件夹，也不用单独记着
+一个后台进程：
 
 ```powershell
-schtasks /Create /TN "codex-model-router" /SC ONLOGON /RL LIMITED /F `
-  /TR '"C:\Program Files\Python310\pythonw.exe" "%USERPROFILE%\.codex\services\codex-model-router\router.py"'
-
-schtasks /Run    /TN "codex-model-router"     # 立刻起一次
-schtasks /Delete /TN "codex-model-router" /F  # 不再自启
+.\install-mcp-autostart.ps1    # 往 config.toml 加钩子，然后重启 Codex
+.\uninstall-mcp-autostart.ps1  # 删掉钩子
 ```
 
-macOS / Linux 用 systemd user unit 或 launchd，把同样的命令行包一层即可。
+这个钩子本身不提供任何工具，唯一作用就是被 Codex 拉起来：它确认路由器在听，
+然后安静地挂在 stdin 上等 Codex 退出。如果你更愿意每次手动 `.\start-router.ps1`，
+跳过这一步即可。
+
+macOS / Linux 上 `mcp-autostart.py` 通过 Codex 的 MCP 配置一样工作；那两个 `.ps1`
+只是 Windows 下帮你改 `config.toml` 的小工具。
 
 **6. 让 Codex 用它**
 
@@ -195,6 +201,12 @@ python skills/codex-model-switch/scripts/msw.py switch router
 - 模型目录只是一份清单，**不校验模型是否真实存在**。写错了要等发请求才报错。
 
 ## 排错
+
+**Codex 显示 `Reconnecting... waiting for network` / `Connection failed: error
+sending request`。** 十有八九不是网络问题，而是路由器本身没在跑——Codex 连不上
+`127.0.0.1:8765`，把这个连接拒绝误报成了"网络问题"。跑一下 `.\start-router.ps1`
+（装过 `install-mcp-autostart.ps1` 的话重启一次 Codex 即可）。如果还是起不来，
+`~/.codex/model-router.log` 的最后几行会告诉你原因（端口被占、配置缺失等）。
 
 **选了别家的模型，却报原来那家供应商的错。** 对话在创建时就绑定了供应商，选择器只改模型名。
 新开一个对话即可。

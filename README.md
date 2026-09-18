@@ -149,19 +149,24 @@ python ~/.codex/services/codex-model-router/tools/merge-catalogs.py \
 .\stop-router.ps1      # stop by port
 ```
 
-A scheduled task is the reliable way to start it at logon — a process launched
-from a Startup shortcut can die with the shell that started it:
+Then run **once** to tie the router to Codex's lifecycle — it registers
+`mcp-autostart.py` as a no-tool MCP server. Codex launches its MCP servers
+when it starts, so the router comes up with Codex and nothing is left running
+after you close it. No logon task, no Startup folder, no separate process to
+forget about:
 
 ```powershell
-schtasks /Create /TN "codex-model-router" /SC ONLOGON /RL LIMITED /F `
-  /TR '"C:\Program Files\Python310\pythonw.exe" "%USERPROFILE%\.codex\services\codex-model-router\router.py"'
-
-schtasks /Run    /TN "codex-model-router"     # start it now
-schtasks /Delete /TN "codex-model-router" /F  # stop autostarting
+.\install-mcp-autostart.ps1    # add the hook to config.toml, then restart Codex
+.\uninstall-mcp-autostart.ps1  # remove the hook
 ```
 
-On macOS or Linux, wrap the same command line in a systemd user unit or a
-launchd job.
+The hook exposes no tools; its only job is to be launched. It makes sure the
+router is listening, then idles on stdin until Codex exits. Skip this if you
+would rather start `.\start-router.ps1` by hand each session.
+
+On macOS or Linux, `mcp-autostart.py` works the same way through Codex's MCP
+config; the two `.ps1` files are just the Windows helpers for editing
+`config.toml`.
 
 **6. Point Codex at it**
 
@@ -221,6 +226,14 @@ Install it by copying or linking `skills/codex-model-switch` into
   request time.
 
 ## Troubleshooting
+
+**Codex shows `Reconnecting... waiting for network` / `Connection failed: error
+sending request`.** Almost always this means the router itself is not running —
+Codex cannot reach `127.0.0.1:8765`, and that refused connection is what it
+mislabels as a network problem. Run `.\start-router.ps1` (or just restart
+Codex if you used `install-mcp-autostart.ps1`). If it still will not listen,
+the last lines of `~/.codex/model-router.log` tell you why (busy port, missing
+config, ...).
 
 **Picking a model from another backend throws the old provider's error.** A chat
 binds its provider when it is created, and the model picker only changes the
