@@ -131,6 +131,12 @@ requires_openai_auth = true
 `requires_openai_auth = true` is what makes Codex attach its ChatGPT
 credential. Without it the passthrough route has nothing to forward.
 
+It is also a gate on the **whole** provider, not just the GPT route: while it is
+on, Codex refuses to use or list any model behind the router until it holds a
+valid ChatGPT session. If you do not use the `gpt-*` route — or the account is
+logged out, on a free plan, or out of quota — set it to `false`. The API-key
+routes keep working either way; they never needed that credential.
+
 **4. Merge the model catalogs**
 
 What the picker can show is decided entirely by the file `model_catalog_json`
@@ -219,6 +225,11 @@ Install it by copying or linking `skills/codex-model-switch` into
 
 - **It is a resident process.** If the router is down, Codex cannot reach that
   provider. Switching the default back to a direct provider restores service.
+- **`requires_openai_auth` is a global gate, not a GPT-only switch.** With
+  `true`, a logged-out, free-plan, or out-of-quota account makes Codex demand a
+  login before it will list or use any model behind the router, which looks like
+  a broken setup even though the API-key routes are fine. Use `false` when you
+  only need the key-backed routes.
 - **The GPT route rides on a private endpoint** (`chatgpt.com/backend-api/codex`).
   A Codex update could change it. This is the one long-term fragile part; the
   API-key routes are not affected.
@@ -226,6 +237,37 @@ Install it by copying or linking `skills/codex-model-switch` into
   request time.
 
 ## Troubleshooting
+
+**Codex suddenly demands a ChatGPT login, the picker has no selectable models in
+any chat, and DeepSeek stopped answering too.** That is
+`requires_openai_auth = true` on the router provider. The flag gates the whole
+provider, not just the GPT route, so Codex insists on a working ChatGPT session
+before it will list or use anything behind the router. A logged-out, free-plan,
+or out-of-quota account turns that into a login loop — the app-server log shows
+it as `codex_login::server | login callback token exchange failed`. The picker is
+fed by the app-server's `model/list`, so a gated provider empties it for every
+chat; an old chat that "cannot select models" is the same symptom, not a second
+bug.
+
+Fix it by turning the flag off unless you actually use the `gpt-*` route:
+
+```toml
+[model_providers.router]
+requires_openai_auth = false
+```
+
+Then **restart the Codex app** — config is read at startup only, and an app that
+is already running keeps the old value, which makes the edit look like it did
+nothing. To confirm the router itself is healthy:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -State Listen
+Get-Content ~/.codex/model-router.log -Tail 5
+```
+
+The log should show `router listening on http://127.0.0.1:8765` and a
+`<model> -> <route> -> HTTP 200` line for the last request that actually went
+through.
 
 **Codex shows `Reconnecting... waiting for network` / `Connection failed: error
 sending request`.** Almost always this means the router itself is not running —

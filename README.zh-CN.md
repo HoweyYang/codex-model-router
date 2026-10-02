@@ -119,6 +119,11 @@ requires_openai_auth = true
 `requires_openai_auth = true` 是让 Codex 带上 ChatGPT 凭据的关键。少了它，
 passthrough 那条路由就没有东西可转发。
 
+但它同时是**整个供应商**的闸门，不只是 GPT 那条线：只要为 `true`，Codex 在拿到
+有效的 ChatGPT 会话之前，不会列出也不会使用路由器后面的任何模型。如果你不用
+`gpt-*` 路线，或者账号处于未登录 / 免费版 / 额度用光的状态，就把它设成 `false`。
+API key 那几条路线不受影响，它们本来就不需要这份凭据。
+
 **4. 合并模型目录**
 
 选择器能列出什么，完全由 `model_catalog_json` 指向的文件决定。把各家的目录合成一份：
@@ -196,11 +201,41 @@ python skills/codex-model-switch/scripts/msw.py switch router
 
 
 - **它是个常驻进程。** 路由器挂了，Codex 就走不通。把默认改回直连供应商即可恢复。
+- **`requires_openai_auth` 是整个供应商的闸门，不是"只影响 GPT"的开关。** 为
+  `true` 时，未登录 / 免费版 / 额度用光的账号会让 Codex 先要登录，才肯列出和使用
+  路由器后面的任何模型，看起来像整套配置坏掉，其实 API key 路线是好的。只用 key
+  路线的话设为 `false`。
 - **GPT 那条走的是 Codex 的私有接口**（`chatgpt.com/backend-api/codex`）。Codex 升级
   有可能改掉它，这是整个方案唯一长期脆弱的地方；API key 路线不受影响。
 - 模型目录只是一份清单，**不校验模型是否真实存在**。写错了要等发请求才报错。
 
 ## 排错
+
+**Codex 突然强制要求登录 ChatGPT，所有对话的选择器都点不出模型，DeepSeek 也用不了。**
+这是路由器供应商上的 `requires_openai_auth = true` 造成的。这个开关管的是**整个供应商**，
+不只是 GPT 路线：为 `true` 时，Codex 必须先拿到有效的 ChatGPT 会话，才肯列出和使用路由器
+后面的任何模型。账号未登录、免费版、或额度用光时，它就变成登录死循环，日志里对应
+`codex_login::server | login callback token exchange failed`。选择器的列表来自 app-server
+的 `model/list`，所以供应商一旦被闸住，**每个**对话的选择器都是空的——"旧对话选不了模型"
+是同一个症状，不是第二个 bug。
+
+不用 `gpt-*` 路线就把这个开关关掉：
+
+```toml
+[model_providers.router]
+requires_openai_auth = false
+```
+
+然后**重启 Codex App**——配置只在启动时读取，已经跑着的进程还用旧值，改了会像是没生效。
+想单独确认路由器本身没问题：
+
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -State Listen
+Get-Content ~/.codex/model-router.log -Tail 5
+```
+
+日志里应该有 `router listening on http://127.0.0.1:8765`，以及最近一次真实请求的
+`<model> -> <route> -> HTTP 200`。
 
 **Codex 显示 `Reconnecting... waiting for network` / `Connection failed: error
 sending request`。** 十有八九不是网络问题，而是路由器本身没在跑——Codex 连不上
