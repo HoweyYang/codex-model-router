@@ -146,14 +146,17 @@ def apply_keys(keys: dict, reg: dict) -> Path:
     if not path.exists():
         die(f"no config file at {path}")
 
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if BLOCK_START in lines:
+        start = lines.index(BLOCK_START)
+        if BLOCK_END not in lines[start + 1 :]:
+            die("config.toml has an unterminated codex-model-switch block; restore its end marker before switching")
+
     backup = path.with_name(f"{path.name}.bak-msw-{time.strftime('%Y%m%d-%H%M%S')}")
     shutil.copy2(path, backup)
-
-    lines = path.read_text(encoding="utf-8").splitlines()
     block = render_block(keys)
 
     if BLOCK_START in lines:
-        start = lines.index(BLOCK_START)
         end = lines.index(BLOCK_END, start)
         lines[start : end + 1] = block
     else:
