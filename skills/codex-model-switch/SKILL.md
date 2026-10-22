@@ -7,6 +7,9 @@ description: Switch Codex between configured models and providers, add new provi
 
 Codex picks one model and one provider per process. This skill makes that
 choice a named, reversible target instead of something the user edits by hand.
+It deliberately does not combine providers into one picker: switch profiles,
+then start a new chat when moving between native OpenAI and a direct API
+provider.
 
 Two artifacts, both under `$CODEX_HOME` (default `~/.codex`):
 
@@ -43,8 +46,9 @@ sign-in should carry `forced_login_method = "chatgpt"` or omit the key.
 
 **Give every provider its own `model_catalog_json`.** Without an entry for the
 selected model, Codex logs `Model metadata for <slug> not found. Defaulting to
-fallback metadata` and runs with wrong context limits. Build a catalog by
-running `codex debug models` with that provider active and saving the JSON.
+fallback metadata` and runs with wrong context limits. For the native OpenAI
+catalog, use `tools/refresh-openai-catalog.py` from this repository after
+normal Codex sign-in; it validates the output before replacing the old file.
 
 **Provider is global, profiles are not.** `switch` rewrites `config.toml`,
 which the desktop app reads when it starts a chat  -  the app's model picker

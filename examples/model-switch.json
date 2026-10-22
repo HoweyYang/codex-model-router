@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "current": "gpt",
+  "targets": {
+    "gpt": {
+      "model": "gpt-5.6-terra",
+      "model_provider": "openai",
+      "model_catalog_json": "C:/Users/you/.codex/models-openai.json",
+      "_note": "Native ChatGPT/Codex profile"
+    },
+    "deepseek": {
+      "model": "deepseek-flash",
+      "model_provider": "deepseek",
+      "model_catalog_json": "C:/Users/you/.codex/models.json",
+      "_note": "Direct DeepSeek profile; independent of ChatGPT sign-in"
+    }
+  }
+}
