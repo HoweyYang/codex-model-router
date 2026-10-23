@@ -1,5 +1,10 @@
 # Native Provider Switcher design
 
+> **Status: superseded for the default installation.** This design remains
+> useful for users who deliberately want separate native providers, but the
+> published main path is Router-first because it keeps GPT Plus and DeepSeek
+> selectable together. See the two README files for the supported setup.
+
 ## Goal
 
 Replace the router-first installation with a high-compatibility way to use

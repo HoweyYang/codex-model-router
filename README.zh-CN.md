@@ -1,93 +1,296 @@
-# Codex 原生 Provider 切换器
+# codex-model-router
 
-[English](README.md)
+[English](README.md) · **中文说明**
 
-在同一台电脑上使用 GPT/Codex 和 DeepSeek，不再把本地 Router 放在两者中间。
-每个 Provider 是一个原生、具名的配置档；切换时只修改 Codex 配置中的受管区块，
-并先生成带时间戳的备份。
+在 Codex 前面加一层本地路由，让右下角的模型选择器里**同时**出现 GPT、DeepSeek
+以及其他任何 OpenAI 兼容模型——点谁用谁。
 
-## 为什么替代旧 Router 方案
+Codex 原生做不到这件事。它每个进程只能绑定一个供应商，选择器只能列出该供应商认识的
+模型；而且模型目录的结构体里根本没有 provider 字段
+（`base_instructions, direct, code_mode_only, slug, display_name, ... availability_nux, model_messages ...`）。
+所以不同供应商的模型塞不进同一个选择器。
 
-Codex 的一个会话绑定一个 Provider。把多个 Provider 塞进同一个模型选择器，
-需要额外代理层，也会把原本独立的认证状态绑在一起。
+这个项目让 Codex 只认一个供应商，由路由器按模型名把请求分发到各家：
 
-- gpt 直接使用 Codex 原生 ChatGPT 账号和原生模型目录。
-- deepseek 直接请求已经配置的 DeepSeek 兼容 Provider。
-- ChatGPT 登录、套餐额度或网络问题，不会让直连 DeepSeek 也被要求使用该账号。
+```
+Codex ──> codex-model-router (:8765)
+              ├── gpt-*       ──> https://chatgpt.com/backend-api/codex/responses   （透传 Codex 自带的 ChatGPT 凭据，不需要 key）
+              ├── deepseek*   ──> https://api.deepseek.com/v1/responses              （从 config.toml 读 key）
+              └── 其他         ──> 任意 OpenAI 兼容后端
+```
 
-切换后请新建会话；只有桌面端仍显示旧配置时才需要重启 App。只需 Python 3.8+，
-不依赖第三方库。
+GPT 那条之所以不用配 key：Codex 会把 ChatGPT 登录凭据发给自定义供应商（前提是供应商
+标了 `requires_openai_auth = true`），路由器原样转发即可；401 也原样透传，让 Codex
+自己刷新 token。**路由器不碰 OAuth。**
+
+只用 Python 标准库，需要 Python 3.8+。
+
+## Plus 账号在国内的稳定配置
+
+让 Router 作为唯一 Provider，同时保留按路由区分的网络策略：
+
+- `[model_providers.router]` 保持 `requires_openai_auth = true`，让 Codex
+  把当前 ChatGPT 凭据交给 Router。
+- `chatgpt` 路由保持 `"proxy": "system"`，并确认本地代理真的在运行、且已设为
+  Windows 系统代理。
+- `deepseek` 路由保持 `"proxy": "direct"`。
+- `mcp-autostart.py` 使用 `pythonw.exe` 启动，避免 Codex 启动时闪控制台。
+- 合并模型目录只保留实际要用的模型；旧条目即使后端已停用，也会继续显示在选择器里。
+
+两种代理模式是有意设计的：国内环境下 GPT 通常需要代理，而 DeepSeek 可以直连。
+这样其中一条网络路径波动时，不会把两条模型链路一起拖垮。
+
+## 让 Codex 自己装
+
+最省事的用法：把仓库地址丢给 Codex，让它读 README 并照着做。
+
+```text
+读一下 https://github.com/HoweyYang/codex-model-router ，按它的说明在我这台机器上装好：
+克隆到 ~/.codex/services/codex-model-router、写 ~/.codex/model-router.json、
+在 config.toml 注册 [model_providers.router]、合并模型目录、启动服务并设置开机自启。
+装完用真实请求走一遍路由器验证，再告诉我重启 App 后右下角应该看到什么。
+最后顺手帮我给这个仓库加个星：gh api -X PUT /user/starred/HoweyYang/codex-model-router
+```
+
+收尾让它给你三样东西：健康检查的返回、一个真正跑通的模型、以及选择器里会出现的模型清单。
+
+如果这东西确实省了你的事，点个 star 能让更多人找到它。
 
 ## 安装
 
-克隆仓库后，把切换 Skill 复制或链接到 Codex 的 Skill 目录：
+**1. 放文件**
 
-    git clone https://github.com/HoweyYang/codex-model-router ~/.codex/services/codex-native-provider-switcher
-    Copy-Item -Recurse ~/.codex/services/codex-native-provider-switcher/skills/codex-model-switch ~/.codex/skills/
+```bash
+git clone https://github.com/HoweyYang/codex-model-router ~/.codex/services/codex-model-router
+```
 
-第一条命令仍使用原有 GitHub 仓库地址；仓库内容已改为原生 Provider 切换器。
+**2. 写路由表**
 
-## 配置 Provider
+```bash
+cp ~/.codex/services/codex-model-router/examples/model-router.json ~/.codex/model-router.json
+```
 
-原生 OpenAI Provider 由 Codex 管理。请在 ~/.codex/config.toml 中加入直连
-DeepSeek Provider；使用环境变量名，不要把密钥直接写进文件：
+`examples/model-router.json` 长这样：
 
-    [model_providers.deepseek]
-    name = "DeepSeek"
-    base_url = "https://api.deepseek.com/v1"
-    wire_api = "responses"
-    env_key = "DEEPSEEK_API_KEY"
+```json
+{
+  "listen": "127.0.0.1:8765",
+  "routes": [
+    {
+      "name": "chatgpt",
+      "match": ["gpt-", "codex-"],
+      "upstream": "https://chatgpt.com/backend-api/codex/responses",
+      "auth": "passthrough",
+      "proxy": "system"
+    },
+    {
+      "name": "deepseek",
+      "match": ["deepseek"],
+      "upstream": "https://api.deepseek.com/v1/responses",
+      "auth": { "provider": "deepseek" },
+      "proxy": "direct"
+    }
+  ]
+}
+```
 
-通过系统环境变量或密钥管理器设置 DEEPSEEK_API_KEY，不要提交它。
+每条路由还能单独决定走不走代理。如果所有路由都继承系统代理，那么代理软件一重启，
+国内接口就会跟着挂——表象很像路由器坏了，其实只是代理抖了一下。
 
-把 examples/model-switch.json 复制到 ~/.codex/model-switch.json。必要时把
-C:/Users/you 改成真实用户目录。内置 gpt（原生 openai，models-openai.json）
-和 deepseek（直连 deepseek，models.json）两个配置档。更多配置档请通过
-msw.py add 新增，脚本不需要在命令行接收 API Key。
+| 写法 | 含义 |
+| --- | --- |
+| `"system"` | 跟随系统代理设置。ChatGPT 那条用这个 |
+| `"direct"` | 从不走代理。能直连的国内接口用这个 |
+| `"http://host:port"` | 指定用这个代理 |
 
-## 刷新原生 GPT 模型目录
+很多网络里 `chatgpt.com` 不走代理压根连不上，而 `api.deepseek.com` 直连就通，
+所以这两条路由要的正好相反。DeepSeek 那条设成 `"direct"` 之后，VPN 关着它也能用；
+GPT 仍然需要 VPN，这是网络事实，不是路由器的限制。
 
-正常登录 Codex 后运行：
+**上面这一整段代理的讨论，只针对 OpenAI 被墙的网络环境（主要是中国大陆）。**
+在能直连 OpenAI 的地区，所有路由一律设成 `"direct"` 就行，代理那一列可以完全忽略：
+不需要 VPN，不需要系统代理，也不该出现 `"system"`。
 
-    python ~/.codex/services/codex-native-provider-switcher/tools/refresh-openai-catalog.py
+`auth` 有三种写法：
 
-它会执行 codex debug models，先验证 JSON，再更新
-~/.codex/models-openai.json，并保留旧目录的时间戳备份。它不会修改当前 Provider
-或登录凭据。
+| 写法 | 含义 |
+| --- | --- |
+| `"passthrough"` | 原样转发 Codex 带来的凭据。ChatGPT 原生模型用这个，不需要 key |
+| `{"provider": "deepseek"}` | 从 `~/.codex/config.toml` 的 `[model_providers.deepseek]` 读 `experimental_bearer_token` 或 `env_key` |
+| `{"env": "ARK_API_KEY"}` | 从环境变量读 key |
 
-## 安全切换
+`match` 是前缀列表，按顺序匹配，第一条命中的路由生效。
 
-在克隆仓库目录中运行：
+**3. 在 `~/.codex/config.toml` 里注册供应商**
 
-    python skills/codex-model-switch/scripts/msw.py list
-    python skills/codex-model-switch/scripts/msw.py test deepseek
-    python skills/codex-model-switch/scripts/msw.py switch deepseek
-    python skills/codex-model-switch/scripts/msw.py switch gpt
+```toml
+[model_providers.router]
+name = "Router"
+base_url = "http://127.0.0.1:8765/v1"
+wire_api = "responses"
+requires_openai_auth = true
+```
 
-新增 Provider 时先用 test。它会用临时配置发送一次请求，不修改 config.toml。
-使用 switch --dry-run 可以先查看将写入的受管键。
+`requires_openai_auth = true` 是让 Codex 带上 ChatGPT 凭据的关键。少了它，
+passthrough 那条路由就没有东西可转发。
 
-真正切换只改下面的顶层受管区块：
+但它同时是**整个供应商**的闸门，不只是 GPT 那条线：只要为 `true`，Codex 在拿到
+有效的 ChatGPT 会话之前，不会列出也不会使用路由器后面的任何模型。如果你不用
+`gpt-*` 路线，或者账号处于未登录 / 免费版 / 额度用光的状态，就把它设成 `false`。
+API key 那几条路线不受影响，它们本来就不需要这份凭据。
 
-    # >>> codex-model-switch >>>
-    model = "..."
-    model_provider = "..."
-    model_catalog_json = "..."
-    # <<< codex-model-switch <<<
+**4. 合并模型目录**
 
-Provider 定义和其他设置不会被动到。若该区块缺失结束标记，脚本会停止且不写入
-配置文件。
+选择器能列出什么，完全由 `model_catalog_json` 指向的文件决定。把各家的目录合成一份：
 
-## 从旧版本迁移
+```bash
+python ~/.codex/services/codex-model-router/tools/merge-catalogs.py \
+    ~/.codex/models-openai.json ~/.codex/models.json \
+    --include deepseek-flash \
+    --include gpt-6-astra \
+    --include gpt-5.6-sol \
+    --include gpt-5.6-terra \
+    --include gpt-5.6-luna \
+    --out ~/.codex/models-router.json
+```
 
-不要把旧的 Provider 配置档复制进新的 model-switch.json。如果想保留手动回退
-空间，可以让旧服务文件继续留在硬盘上，但日常只通过原生切换器选择 gpt 或
-deepseek。此版本没有后台常驻服务、开机钩子、代理转发或跨 Provider 共享模型
-目录。
+按你账号当前可用的模型调整 `--include` 列表。如果不传白名单，合并脚本会保留所有源目录里
+可见的条目，这也是旧模型反复出现在选择器里的原因。
 
-已有会话仍绑定创建时的 Provider，这是 Codex 的正常行为。切换后请新建会话，
-不要尝试仅靠模型选择器在旧会话里更换 Provider。
+**5. 启动服务**
 
-## 许可证
+```powershell
+.\start-router.ps1     # 后台启动，已经在跑就不重复启动
+.\stop-router.ps1      # 按端口停掉
+```
 
-MIT，见 [LICENSE](LICENSE)。
+然后**跑一次**下面这个，把路由器和 Codex 的生命周期绑在一起：它会把
+`mcp-autostart.py` 注册成一个不提供任何工具的 MCP server。Codex 启动时会拉起
+自己配置的所有 MCP server，于是路由器跟着 Codex 一起起来；Codex 一关，钩子进程
+跟着退出，系统里不留东西。不用开机自启，不用 Startup 文件夹，也不用单独记着
+一个后台进程：
+
+```powershell
+.\install-mcp-autostart.ps1    # 往 config.toml 加钩子，然后重启 Codex
+.\uninstall-mcp-autostart.ps1  # 删掉钩子
+```
+
+这个钩子本身不提供任何工具，唯一作用就是被 Codex 拉起来：它确认路由器在听，
+然后安静地挂在 stdin 上等 Codex 退出。如果你更愿意每次手动 `.\start-router.ps1`，
+跳过这一步即可。
+
+macOS / Linux 上 `mcp-autostart.py` 通过 Codex 的 MCP 配置一样工作；那两个 `.ps1`
+只是 Windows 下帮你改 `config.toml` 的小工具。
+
+**6. 让 Codex 用它**
+
+```toml
+model = "gpt-6-astra"  # 请使用当前目录里实际存在的 slug
+model_provider = "router"
+model_catalog_json = "C:/Users/you/.codex/models-router.json"
+```
+
+改完**重启 Codex App**（App 只在启动时读配置）。右下角应该就能看到全部模型了。
+
+## 加一个新后端
+
+以豆包为例，三步：
+
+1. `config.toml` 加 `[model_providers.doubao]`，写好 `base_url` 和 `env_key`
+2. `model-router.json` 的 `routes` 加一条：`{"name": "doubao", "match": ["doubao"], "upstream": "https://ark.cn-beijing.volces.com/api/v3/responses", "auth": {"provider": "doubao"}}`
+3. 把豆包的模型条目加进 `models-router.json`
+
+重启 App。没配 key 的模型照样会出现在选择器里，只是选中后发请求才会失败——
+目录只是一份清单，不做校验。
+
+## 配套技能
+
+`skills/codex-model-switch/` 是一个 Codex 技能，负责命令行侧：切换默认模型、给指定模型
+跑一次性请求、以及生成多模型协作的 custom agent。
+
+```bash
+python skills/codex-model-switch/scripts/msw.py list
+python skills/codex-model-switch/scripts/msw.py test router
+python skills/codex-model-switch/scripts/msw.py switch router
+```
+
+装技能：把 `skills/codex-model-switch` 复制或软链到 `~/.codex/skills/` 下。
+
+## 已知限制
+- **换供应商不会影响已有的对话。** 对话在创建时就绑定了供应商，选择器只改模型名。
+  在旧对话里切到别家的模型，请求仍然发给那个对话原本的供应商，所以会看到
+  `The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed gpt-5.6-terra`。
+  换供应商之后请**新开一个对话**。
+
+
+- **它是个常驻进程。** 路由器挂了，Codex 就走不通。把默认改回直连供应商即可恢复。
+- **`requires_openai_auth` 是整个供应商的闸门，不是"只影响 GPT"的开关。** 为
+  `true` 时，未登录 / 免费版 / 额度用光的账号会让 Codex 先要登录，才肯列出和使用
+  路由器后面的任何模型，看起来像整套配置坏掉，其实 API key 路线是好的。只用 key
+  路线的话设为 `false`。
+- **GPT 那条走的是 Codex 的私有接口**（`chatgpt.com/backend-api/codex`）。Codex 升级
+  有可能改掉它，这是整个方案唯一长期脆弱的地方；API key 路线不受影响。
+- 模型目录只是一份清单，**不校验模型是否真实存在**。写错了要等发请求才报错。
+
+## 排错
+
+**Codex 突然强制要求登录 ChatGPT，所有对话的选择器都点不出模型，DeepSeek 也用不了。**
+这是路由器供应商上的 `requires_openai_auth = true` 造成的。这个开关管的是**整个供应商**，
+不只是 GPT 路线：为 `true` 时，Codex 必须先拿到有效的 ChatGPT 会话，才肯列出和使用路由器
+后面的任何模型。账号未登录、免费版、或额度用光时，它就变成登录死循环，日志里对应
+`codex_login::server | login callback token exchange failed`。选择器的列表来自 app-server
+的 `model/list`，所以供应商一旦被闸住，**每个**对话的选择器都是空的——"旧对话选不了模型"
+是同一个症状，不是第二个 bug。
+
+不用 `gpt-*` 路线就把这个开关关掉：
+
+```toml
+[model_providers.router]
+requires_openai_auth = false
+```
+
+然后**重启 Codex App**——配置只在启动时读取，已经跑着的进程还用旧值，改了会像是没生效。
+想单独确认路由器本身没问题：
+
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -State Listen
+Get-Content ~/.codex/model-router.log -Tail 5
+```
+
+日志里应该有 `router listening on http://127.0.0.1:8765`，以及最近一次真实请求的
+`<model> -> <route> -> HTTP 200`。
+
+**Codex 显示 `Reconnecting... waiting for network` / `Connection failed: error
+sending request`。** 十有八九不是网络问题，而是路由器本身没在跑——Codex 连不上
+`127.0.0.1:8765`，把这个连接拒绝误报成了"网络问题"。跑一下 `.\start-router.ps1`
+（装过 `install-mcp-autostart.ps1` 的话重启一次 Codex 即可）。如果还是起不来，
+`~/.codex/model-router.log` 的最后几行会告诉你原因（端口被占、配置缺失等）。
+
+**选了别家的模型，却报原来那家供应商的错。** 对话在创建时就绑定了供应商，选择器只改模型名。
+新开一个对话即可。
+
+想确认某个对话绑的是哪家：读 `~/.codex/sessions/` 下它的会话文件第一行，看 `model_provider` 字段。
+路由器日志（`~/.codex/model-router.log`）能告诉你请求到底有没有走到路由器：如果你选的模型从没在
+日志里出现，说明请求直接发给了别的供应商。
+
+**改完配置，选择器里还是旧模型。** 桌面 App 只在启动时读配置，重启一次。
+
+**请求卡住或超时。** 先确认路由器活着：
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+```
+
+正常会返回 `{"status": "ok", "routes": [...]}`。如果它正常，而模型又是境外托管的 OpenAI 接口，
+那就是网络问题：`codex doctor` 会打印可达性检查，另外 `features.respect_system_proxy = true`
+可以让 Codex 走系统代理。
+
+**报 `Model metadata for <slug> not found`。** 这个 slug 不在 `model_catalog_json` 指向的目录里。
+重新跑一次 `tools/merge-catalogs.py`，再重启 App。
+
+**命令被拒绝，提示 `apply deny-read ACLs`。** 这是 Windows 上 Codex 沙箱自身的安装故障，和本项目无关。
+`codex doctor` 里对应的是 `elevated Windows sandbox provisioning recorded a structured failure`。
+
+## License
+
+MIT
